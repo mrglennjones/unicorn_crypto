@@ -2,18 +2,20 @@ import time
 import network
 import socket
 import urequests
+import machine
 from galactic import GalacticUnicorn
 from picographics import PicoGraphics, DISPLAY_GALACTIC_UNICORN as DISPLAY
 from secrets import SSID, PASSWORD  # Import Wi-Fi credentials
 
 # Constants
 BACKGROUND_COLOUR = (10, 0, 96)  # Blue background
+CYAN = (0, 255, 255)  # Cyan for the BTC symbol
+DIM_CYAN = (0, 204, 204)  # Dimmed cyan for the BTC symbol scrolling
 WHITE = (255, 255, 255)  # White for unchanged price or symbol
-DIM_WHITE = (204, 204, 204)  # BTC symbol dimmed by 20%
 GREEN = (0, 255, 0)  # Green for price increase
 RED = (255, 0, 0)  # Red for price decrease
 YELLOW = (255, 255, 0)  # Yellow for connecting
-BRIGHTNESS = 0.25  # Display brightness
+BRIGHTNESS = 0.25  # Initial display brightness
 CRYPTO_SYMBOL = "BTC"  # Cryptocurrency symbol
 URL = f'https://www.bitstamp.net/api/v2/ticker/{CRYPTO_SYMBOL.lower()}usd/'
 
@@ -23,10 +25,28 @@ CENTER_Y = 2  # Keeps text vertically aligned at y + 2 pixels from the top
 # Create Galactic Unicorn object and graphics surface for drawing
 gu = GalacticUnicorn()
 graphics = PicoGraphics(DISPLAY)
-gu.set_brightness(BRIGHTNESS)
 
 # Set font to bitmap8
 graphics.set_font("bitmap8")
+
+# Function to map a value from one range to another
+def map_value(value, in_min, in_max, out_min, out_max):
+    return (value - in_min) * (out_max - out_min) // (in_max - in_min) + out_min
+
+# Function to adjust brightness based on the light sensor
+def adjust_brightness():
+    light_sensor_pin = 26  # Light sensor pin
+    adc = machine.ADC(light_sensor_pin)
+    light_level = adc.read_u16()  # Raw light level (0 to 65535)
+    
+    # Adjusted brightness range (leaning mostly dim)
+    min_brightness = 0.1  # Minimum brightness at night
+    max_brightness = 0.6  # Maximum brightness in bright conditions
+    brightness = map_value(light_level, 0, 65535, min_brightness * 100, max_brightness * 100) / 100.0
+    
+    # Set the brightness on the Galactic Unicorn
+    gu.set_brightness(brightness)
+    print(f"Ambient light level: {light_level}, Brightness set to: {brightness:.2f}")
 
 # Function to interpolate between two colors for a fade effect
 def fade_color(color_from, color_to, step, total_steps):
@@ -126,8 +146,8 @@ def scroll_and_fade(symbol, last_price, new_price, color_from, color_to, scroll_
         graphics.clear()
 
         # Scroll `BTC:` symbol in the opposite direction of the value
-        outline_text(symbol, 1, CENTER_Y - offset * scroll_direction, DIM_WHITE)
-        outline_text(symbol, 1, CENTER_Y - (offset - 10) * scroll_direction, DIM_WHITE)
+        outline_text(symbol, 1, CENTER_Y - offset * scroll_direction, DIM_CYAN)
+        outline_text(symbol, 1, CENTER_Y - (offset - 10) * scroll_direction, DIM_CYAN)
 
         # Scroll price value in the intended direction
         outline_text(
@@ -149,7 +169,7 @@ def scroll_and_fade(symbol, last_price, new_price, color_from, color_to, scroll_
     # After scrolling, ensure the final position is correctly aligned
     graphics.set_pen(graphics.create_pen(*BACKGROUND_COLOUR))
     graphics.clear()
-    outline_text(symbol, 1, CENTER_Y, DIM_WHITE)  # Align symbol to CENTER_Y
+    outline_text(symbol, 1, CENTER_Y, CYAN)  # Align symbol to CENTER_Y with cyan color
     outline_text(f"${new_price}", 1 + symbol_width, CENTER_Y, color_to)  # Align value to CENTER_Y
     gu.update(graphics)
 
@@ -159,6 +179,9 @@ def main_loop():
     current_color = WHITE  # Initial color for unchanged price
 
     while True:
+        # Adjust brightness based on ambient light
+        adjust_brightness()
+
         # Ensure Wi-Fi and internet connectivity
         print("Checking Wi-Fi and internet connectivity...")
         maintain_wifi_connection()
@@ -196,7 +219,7 @@ def main_loop():
             for step in range(10):
                 graphics.set_pen(graphics.create_pen(*BACKGROUND_COLOUR))
                 graphics.clear()
-                outline_text(f"{CRYPTO_SYMBOL}:", x=1, y=CENTER_Y, color=DIM_WHITE)
+                outline_text(f"{CRYPTO_SYMBOL}:", x=1, y=CENTER_Y, color=CYAN)
                 outline_text(
                     f"${new_price}",
                     x=1 + graphics.measure_text(f"{CRYPTO_SYMBOL}:", 1),
@@ -212,6 +235,7 @@ def main_loop():
 
 # Entry point
 if __name__ == "__main__":
+    print("Initializing brightness based on ambient light...")
+    adjust_brightness()  # Set initial brightness
     print("Starting main program...")
     main_loop()
-
